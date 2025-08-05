@@ -3,11 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageCircle, Star, Users, BookOpen, Calendar, Search } from "lucide-react";
+import { MessageCircle, Star, Users, BookOpen, Calendar, Search, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import SkillPostModal from "@/components/SkillPostModal";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
   // Mock data for skills to teach requests
   const skillsToTeach = [
     {
@@ -74,6 +80,18 @@ const Dashboard = () => {
     { label: "Average Rating", value: "4.8", icon: Star }
   ];
 
+  const handleViewProfile = (userId: number) => {
+    // Navigate to a user profile page (for now, navigate to general profile)
+    navigate(`/profile`);
+  };
+
+  const handleConnect = (userName: string, skillName: string) => {
+    toast({
+      title: "Connection Initiated!",
+      description: `Your connection request to ${userName} for "${skillName}" has been sent.`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -106,9 +124,18 @@ const Dashboard = () => {
 
       <div className="container mx-auto px-4 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Welcome back, John!</h1>
-          <p className="text-muted-foreground">Ready to share knowledge and learn something new today?</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Welcome back, John!</h1>
+            <p className="text-muted-foreground">Ready to share knowledge and learn something new today?</p>
+          </div>
+          <Button
+            onClick={() => setIsSkillModalOpen(true)}
+            size="lg"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground h-12 w-12 rounded-full p-0"
+          >
+            <Plus className="w-6 h-6" />
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -164,10 +191,18 @@ const Dashboard = () => {
                         </div>
                       </div>
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewProfile(request.id)}
+                        >
                           View Profile
                         </Button>
-                        <Button size="sm" className="btn-hero">
+                        <Button 
+                          size="sm" 
+                          className="btn-hero"
+                          onClick={() => handleConnect(request.user.name, request.skill)}
+                        >
                           Connect
                         </Button>
                       </div>
@@ -209,10 +244,18 @@ const Dashboard = () => {
                         </div>
                       </div>
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewProfile(offer.id)}
+                        >
                           View Profile
                         </Button>
-                        <Button size="sm" className="btn-hero">
+                        <Button 
+                          size="sm" 
+                          className="btn-hero"
+                          onClick={() => handleConnect(offer.user.name, offer.skill)}
+                        >
                           Connect
                         </Button>
                       </div>
@@ -224,6 +267,11 @@ const Dashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+      
+      <SkillPostModal 
+        open={isSkillModalOpen} 
+        onOpenChange={setIsSkillModalOpen} 
+      />
     </div>
   );
 };
