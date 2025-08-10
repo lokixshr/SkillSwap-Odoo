@@ -1,0 +1,276 @@
+rules_version='2'
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Helper function to check if user is accessing their own data
+    function isOwnData() {
+      return request.auth.uid == resource.data.userId;
+    }
+
+    // Helper to check chat participation using the parent chat doc
+    function isChatParticipant(chatId) {
+      return isAuthenticated() &&
+        request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+    
+    // Users collection - allow authenticated users to read all profiles (for messaging/connections)
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Skill posts collection - users can read all posts, write their own
+    match /skill_posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        request.resource.data.ownerId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+    
+    // User connections collection - connection requests between two participants
+    match /connections/{connectionId} {
+
+      // Helper function to create a canonical ID from two user IDs
+      function canonicalId(uid1, uid2) {
+        return uid1 < uid2 ? uid1 + '_' + uid2 : uid2 + '_' + uid1;
+      }
+
+      // Allow direct get checks (for existence) for authenticated users
+      allow get: if isAuthenticated();
+
+      // Relaxed create rule: sender must be the authed user and recipient must be different.
+      // We still prefer canonical IDs on the client, but do not enforce at rule-time.
+      allow create: if isAuthenticated()
+                    && request.resource.data.senderId == request.auth.uid
+                    && request.resource.data.recipientId != request.auth.uid;
+
+      // Allow reading and updating if the user is a participant (supports legacy fields as well)
+      allow read, update: if isAuthenticated() && (
+                            resource.data.senderId == request.auth.uid ||
+                            resource.data.recipientId == request.auth.uid ||
+                            resource.data.userId == request.auth.uid ||
+                            resource.data.connectedUserId == request.auth.uid
+                          );
+
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.userA == request.auth.uid ||
+        resource.data.userB == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        resource.data.connectedUserId == request.auth.uid
+      );
+    }
+    
+    // Enhanced Messages collection - for real-time messaging
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && 
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.receiverId != request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.receiverId == request.auth.uid || // Can mark as read
+        (resource.data.senderId == request.auth.uid && 
+         request.resource.data.keys().hasOnly(['content', 'editedAt', 'metadata'])) // Can edit own messages
+      );
+      allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+    }
+    
+    // Conversations collection - for organizing messages
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && 
+        request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && 
+        request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && 
+        request.auth.uid in resource.data.participants;
+    }
+
+    // Chats collection and their messages
+            match /chats/{chatId} {
+              // Only participants can read the chat doc
+              allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+
+              // Only a participant can create a chat; enforce 2 distinct participants
+              // Accept participants in any order but must be exactly the two UIDs in the chatId
+              allow create: if isAuthenticated() &&
+                request.resource.data.participants is list &&
+                request.resource.data.participants.size() == 2 &&
+                request.resource.data.participants[0] != request.resource.data.participants[1] &&
+                request.auth.uid in request.resource.data.participants &&
+                (request.resource.data.participants[0] + '_' + request.resource.data.participants[1] == chatId ||
+                 request.resource.data.participants[1] + '_' + request.resource.data.participants[0] == chatId);
+
+              // Participants can update chat metadata, but participants array must not change (order-insensitive)
+              allow update: if isChatParticipant(chatId) &&
+                request.resource.data.participants.size() == resource.data.participants.size() &&
+                request.resource.data.participants[0] in resource.data.participants &&
+                request.resource.data.participants[1] in resource.data.participants;
+
+      // Deleting chats via client not allowed
+      allow delete: if false;
+
+      // Messages subcollection within a chat
+      match /messages/{messageId} {
+        // Only chat participants can read messages
+        allow read: if isChatParticipant(chatId);
+
+        // Only a participant can send a message; senderId must be the authed user
+        allow create: if isChatParticipant(chatId) &&
+          request.resource.data.senderId == request.auth.uid;
+
+        // Receiver can mark as read; sender can edit limited fields
+        allow update: if isChatParticipant(chatId) && (
+          // receiver marking as read/received
+          request.auth.uid != resource.data.senderId &&
+          request.resource.data.keys().hasAny(['read', 'readAt', 'delivered', 'deliveredAt']) ||
+          // sender editing content/metadata
+          (request.auth.uid == resource.data.senderId &&
+           request.resource.data.keys().hasOnly(['content', 'editedAt', 'metadata']))
+        );
+
+        // Only the sender can delete their message
+        allow delete: if isChatParticipant(chatId) && request.auth.uid == resource.data.senderId;
+      }
+    }
+    
+    // Friends collection - for storing accepted connections
+    match /friends/{friendId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+    }
+    
+    // Sessions collection - users can manage sessions they're part of
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid ||
+        resource.data.participantId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.organizerId == request.auth.uid ||
+        request.resource.data.participantId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid ||
+        resource.data.participantId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.organizerId == request.auth.uid ||
+        resource.data.participantId == request.auth.uid
+      );
+    }
+    
+    // Session invitations collection - for session requests between users
+    match /session_invitations/{invitationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+    }
+    
+    // Notifications collection - for real-time notifications system
+    match /notifications/{notificationId} {
+      // Users can read notifications sent to them or sent by them
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        resource.data.fromUserId == request.auth.uid
+      );
+
+      // Users can create notifications for others (as sender)
+      allow create: if isAuthenticated() && (
+        request.resource.data.senderId == request.auth.uid ||
+        request.resource.data.fromUserId == request.auth.uid
+      );
+
+      // Users can update notifications they received (mark as read, update status)
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+
+      // Users can delete their own notifications
+      allow delete: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid
+      );
+    }
+
+    // Contacts collection - for accepted connections
+    match /contacts/{contactId} {
+      // Users can read contacts where they are either userId1 or userId2
+      allow read: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+
+      // Allow creating contact entries (typically done automatically after connection acceptance)
+      allow create: if isAuthenticated() &&
+        (
+          request.resource.data.userId1 == request.auth.uid ||
+          request.resource.data.userId2 == request.auth.uid
+        );
+
+      // Allow updating contact entries by either party
+      allow update: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+
+      // Allow deleting contact entries by either party
+      allow delete: if isAuthenticated() && (
+        resource.data.userId1 == request.auth.uid ||
+        resource.data.userId2 == request.auth.uid
+      );
+    }
+  }
+}

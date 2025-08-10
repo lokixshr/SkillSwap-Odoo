@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { SkillPostService } from "@/lib/database";
 
 interface SkillPostModalProps {
   open: boolean;
@@ -28,6 +30,7 @@ interface SkillPostModalProps {
 
 const SkillPostModal: React.FC<SkillPostModalProps> = ({ open, onOpenChange }) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   
   const [learnForm, setLearnForm] = useState({
     skillName: "",
@@ -41,7 +44,7 @@ const SkillPostModal: React.FC<SkillPostModalProps> = ({ open, onOpenChange }) =
     level: "",
   });
 
-  const handleLearnSubmit = (e: React.FormEvent) => {
+  const handleLearnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!learnForm.skillName || !learnForm.description || !learnForm.level) {
       toast({
@@ -52,16 +55,44 @@ const SkillPostModal: React.FC<SkillPostModalProps> = ({ open, onOpenChange }) =
       return;
     }
     
-    toast({
-      title: "Skill Posted Successfully!",
-      description: `Your request to learn "${learnForm.skillName}" has been posted.`,
-    });
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to post skills.",
+        variant: "destructive",
+      });
+      return;
+    }
     
-    setLearnForm({ skillName: "", description: "", level: "" });
-    onOpenChange(false);
+    try {
+      await SkillPostService.createSkillPost({
+        userId: user.uid,
+        userDisplayName: user.displayName || user.email?.split('@')[0] || 'User',
+        userPhotoURL: user.photoURL || undefined,
+        skillName: learnForm.skillName,
+        description: learnForm.description,
+        proficiencyLevel: learnForm.level as 'Beginner' | 'Intermediate' | 'Advanced',
+        type: 'learn'
+      });
+      
+      toast({
+        title: "Skill Posted Successfully!",
+        description: `Your request to learn "${learnForm.skillName}" has been posted.`,
+      });
+      
+      setLearnForm({ skillName: "", description: "", level: "" });
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error posting skill:', error);
+      toast({
+        title: "Error",
+        description: "Failed to post skill. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleTeachSubmit = (e: React.FormEvent) => {
+  const handleTeachSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teachForm.skillName || !teachForm.description || !teachForm.level) {
       toast({
@@ -72,13 +103,41 @@ const SkillPostModal: React.FC<SkillPostModalProps> = ({ open, onOpenChange }) =
       return;
     }
     
-    toast({
-      title: "Skill Posted Successfully!",
-      description: `Your offer to teach "${teachForm.skillName}" has been posted.`,
-    });
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to post skills.",
+        variant: "destructive",
+      });
+      return;
+    }
     
-    setTeachForm({ skillName: "", description: "", level: "" });
-    onOpenChange(false);
+    try {
+      await SkillPostService.createSkillPost({
+        userId: user.uid,
+        userDisplayName: user.displayName || user.email?.split('@')[0] || 'User',
+        userPhotoURL: user.photoURL || undefined,
+        skillName: teachForm.skillName,
+        description: teachForm.description,
+        proficiencyLevel: teachForm.level as 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert',
+        type: 'teach'
+      });
+      
+      toast({
+        title: "Skill Posted Successfully!",
+        description: `Your offer to teach "${teachForm.skillName}" has been posted.`,
+      });
+      
+      setTeachForm({ skillName: "", description: "", level: "" });
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error posting skill:', error);
+      toast({
+        title: "Error",
+        description: "Failed to post skill. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "skillswap-442cb",
+    "skillswap-prod": "skillswap-442cb"
+  },
+  "targets": {},
+  "etags": {}
+}

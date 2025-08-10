@@ -14,37 +14,54 @@ import {
   Edit3,
   Mail,
   Phone,
-  MessageCircle
+  MessageCircle,
+  ArrowLeft
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { useSkillPosts } from "@/hooks/useSkillPosts";
 
 const Profile = () => {
-  // Mock user data
-  const user = {
-    name: "John Doe",
-    avatar: "",
-    initials: "JD",
-    email: "john.doe@email.com",
-    phone: "+1 (555) 123-4567",
-    location: "San Francisco, CA",
-    joinDate: "March 2024",
-    bio: "Passionate software developer and lifelong learner. I love sharing knowledge about web development and learning new skills from others in the community.",
-    stats: {
-      skillsTaught: 8,
-      skillsLearned: 12,
-      totalSessions: 45,
-      rating: 4.8,
-      reviews: 23
-    }
+  const navigate = useNavigate();
+  const { user, userProfile } = useAuth();
+  const { profile, loading: profileLoading } = useUserProfile();
+  const { posts: userPosts, loading: postsLoading } = useSkillPosts();
+
+  // Use real user data or fallback to mock data
+  const displayName = userProfile?.displayName || user?.displayName || user?.email?.split('@')[0] || "User";
+  const email = userProfile?.email || user?.email || "user@example.com";
+  const photoURL = userProfile?.photoURL || user?.photoURL || "";
+  const location = userProfile?.location || "Location not set";
+  const bio = userProfile?.bio || "No bio available";
+  const firstName = userProfile?.firstName || displayName.split(' ')[0];
+  const lastName = userProfile?.lastName || displayName.split(' ').slice(1).join(' ') || "";
+
+  // Calculate stats from real data
+  const teachingPosts = userPosts.filter(post => post.type === 'teach');
+  const learningPosts = userPosts.filter(post => post.type === 'learn');
+  
+  const stats = {
+    skillsTaught: teachingPosts.length,
+    skillsLearned: learningPosts.length,
+    totalSessions: 0, // Will be calculated from connections
+    rating: 4.8, // Will be calculated from reviews
+    reviews: 0
   };
 
   const skills = [
-    { name: "React Development", level: 90, category: "Teaching", sessions: 15 },
-    { name: "JavaScript", level: 85, category: "Teaching", sessions: 12 },
-    { name: "Python", level: 70, category: "Learning", sessions: 8 },
-    { name: "Digital Marketing", level: 40, category: "Learning", sessions: 5 },
-    { name: "Spanish", level: 60, category: "Learning", sessions: 10 },
-    { name: "UI/UX Design", level: 75, category: "Teaching", sessions: 7 }
+    ...userProfile?.skillsToTeach.map(skill => ({ 
+      name: skill, 
+      level: 90, 
+      category: "Teaching", 
+      sessions: teachingPosts.filter(p => p.skillName === skill).length 
+    })) || [],
+    ...userProfile?.skillsToLearn.map(skill => ({ 
+      name: skill, 
+      level: 40, 
+      category: "Learning", 
+      sessions: learningPosts.filter(p => p.skillName === skill).length 
+    })) || []
   ];
 
   const badges = [
@@ -85,6 +102,14 @@ const Profile = () => {
     }
   ];
 
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -98,9 +123,9 @@ const Profile = () => {
                   <MessageCircle className="w-5 h-5" />
                 </Button>
               </Link>
-              <Avatar className="w-8 h-8">
-                <AvatarFallback>JD</AvatarFallback>
-              </Avatar>
+              <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
             </div>
           </div>
         </div>
@@ -108,85 +133,88 @@ const Profile = () => {
 
       <div className="container mx-auto px-4 py-8">
         {/* Profile Header */}
-        <Card className="mb-8">
-          <CardContent className="p-8">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
-              <Avatar className="w-32 h-32">
-                <AvatarImage src={user.avatar} />
-                <AvatarFallback className="text-2xl">{user.initials}</AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <h1 className="text-3xl font-bold text-foreground">{user.name}</h1>
-                    <div className="flex items-center text-muted-foreground mt-2 space-x-4">
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-1" />
-                        {user.location}
-                      </div>
-                      <div className="flex items-center">
-                        <Calendar className="w-4 h-4 mr-1" />
-                        Joined {user.joinDate}
-                      </div>
-                    </div>
-                  </div>
-                  <Button variant="outline" className="sm:self-start">
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit Profile
-                  </Button>
+        <div className="mb-8">
+          <div className="flex items-start space-x-6">
+            <Avatar className="w-24 h-24">
+              <AvatarImage src={photoURL} />
+              <AvatarFallback className="text-2xl">
+                {firstName?.charAt(0) || lastName?.charAt(0) || displayName?.charAt(0) || "U"}
+              </AvatarFallback>
+            </Avatar>
+            
+            <div className="flex-1">
+              <div className="flex items-center space-x-4 mb-4">
+                <div>
+                  <h1 className="text-3xl font-bold text-foreground">{displayName}</h1>
+                  <p className="text-muted-foreground">{email}</p>
                 </div>
-                
-                <p className="text-muted-foreground leading-relaxed">{user.bio}</p>
-                
-                <div className="flex flex-wrap gap-6">
-                  <div className="flex items-center">
-                    <Mail className="w-4 h-4 mr-2 text-muted-foreground" />
-                    <span className="text-sm">{user.email}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <Phone className="w-4 h-4 mr-2 text-muted-foreground" />
-                    <span className="text-sm">{user.phone}</span>
-                  </div>
+                <Button variant="outline" size="sm">
+                  <Edit3 className="w-4 h-4 mr-2" />
+                  Edit Profile
+                </Button>
+              </div>
+              
+              <div className="flex items-center space-x-6 text-sm text-muted-foreground">
+                <div className="flex items-center space-x-2">
+                  <MapPin className="w-4 h-4" />
+                  <span>{location}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>Joined {userProfile?.createdAt?.toDate ? 
+                    new Date(userProfile.createdAt.toDate()).toLocaleDateString() : 
+                    'Recently'
+                  }</span>
                 </div>
               </div>
+              
+              {bio && (
+                <p className="mt-4 text-foreground">{bio}</p>
+              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <Card className="hover-lift">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold text-accent">{user.stats.skillsTaught}</div>
-              <div className="text-sm text-muted-foreground">Skills Taught</div>
-            </CardContent>
-          </Card>
-          <Card className="hover-lift">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold text-accent">{user.stats.skillsLearned}</div>
-              <div className="text-sm text-muted-foreground">Skills Learned</div>
-            </CardContent>
-          </Card>
-          <Card className="hover-lift">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold text-accent">{user.stats.totalSessions}</div>
-              <div className="text-sm text-muted-foreground">Total Sessions</div>
-            </CardContent>
-          </Card>
-          <Card className="hover-lift">
-            <CardContent className="p-6 text-center">
-              <div className="flex items-center justify-center mb-1">
-                <Star className="w-5 h-5 text-yellow-500 fill-current mr-1" />
-                <div className="text-2xl font-bold text-accent">{user.stats.rating}</div>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-foreground">{stats.skillsTaught}</div>
+                <div className="text-sm text-muted-foreground">Skills Taught</div>
               </div>
-              <div className="text-sm text-muted-foreground">Rating</div>
             </CardContent>
           </Card>
-          <Card className="hover-lift">
-            <CardContent className="p-6 text-center">
-              <div className="text-2xl font-bold text-accent">{user.stats.reviews}</div>
-              <div className="text-sm text-muted-foreground">Reviews</div>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-foreground">{stats.skillsLearned}</div>
+                <div className="text-sm text-muted-foreground">Skills Learned</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-foreground">{stats.totalSessions}</div>
+                <div className="text-sm text-muted-foreground">Total Sessions</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-foreground">{stats.rating}</div>
+                <div className="text-sm text-muted-foreground">Average Rating</div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-foreground">{stats.reviews}</div>
+                <div className="text-sm text-muted-foreground">Reviews</div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -195,121 +223,72 @@ const Profile = () => {
         <Tabs defaultValue="skills" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="skills">Skills</TabsTrigger>
-            <TabsTrigger value="badges">Badges</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="badges">Badges</TabsTrigger>
           </TabsList>
 
           <TabsContent value="skills" className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <BookOpen className="w-5 h-5 mr-2 text-accent" />
-                    Teaching Skills
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {skills.filter(skill => skill.category === "Teaching").map((skill, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-foreground">{skill.name}</span>
-                        <span className="text-sm text-muted-foreground">{skill.sessions} sessions</span>
+            <div className="grid gap-4">
+              {skills.length > 0 ? (
+                skills.map((skill, index) => (
+                  <Card key={index}>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="font-semibold text-foreground">{skill.name}</h3>
+                          <p className="text-sm text-muted-foreground">{skill.category}</p>
+                        </div>
+                        <Badge variant="outline">{skill.sessions} sessions</Badge>
                       </div>
                       <Progress value={skill.level} className="h-2" />
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <User className="w-5 h-5 mr-2 text-accent" />
-                    Learning Skills
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {skills.filter(skill => skill.category === "Learning").map((skill, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-foreground">{skill.name}</span>
-                        <span className="text-sm text-muted-foreground">{skill.sessions} sessions</span>
-                      </div>
-                      <Progress value={skill.level} className="h-2" />
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No skills added yet. Complete your onboarding to add skills!</p>
+                </div>
+              )}
             </div>
           </TabsContent>
 
-          <TabsContent value="badges" className="space-y-4">
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {badges.map((badge, index) => (
-                <Card key={index} className="hover-lift">
-                  <CardContent className="p-6 text-center space-y-3">
-                    <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
-                      <badge.icon className={`w-8 h-8 ${badge.color}`} />
+          <TabsContent value="activity" className="space-y-4">
+            <div className="space-y-4">
+              {recentActivity.map((activity, index) => (
+                <Card key={index}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        activity.type === 'taught' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        {activity.type === 'taught' ? <BookOpen className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">
+                          {activity.type === 'taught' ? 'Taught' : 'Learned'} {activity.skill}
+                        </p>
+                        <p className="text-sm text-muted-foreground">with {activity.user} • {activity.date}</p>
+                      </div>
                     </div>
-                    <h3 className="font-semibold text-foreground">{badge.name}</h3>
-                    <p className="text-sm text-muted-foreground">{badge.description}</p>
                   </CardContent>
                 </Card>
               ))}
             </div>
           </TabsContent>
 
-          <TabsContent value="activity" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {recentActivity.map((activity, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-4 border border-border rounded-lg">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      activity.type === 'taught' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
-                    }`}>
-                      {activity.type === 'taught' ? <BookOpen className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-foreground">
-                        {activity.type === 'taught' ? 'Taught' : 'Learned'} <span className="font-medium">{activity.skill}</span>
-                        {activity.type === 'taught' ? ' to ' : ' from '}<span className="font-medium">{activity.user}</span>
-                      </p>
-                      <p className="text-sm text-muted-foreground">{activity.date}</p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           <TabsContent value="reviews" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Reviews ({reviews.length})</span>
-                  <div className="flex items-center">
-                    <Star className="w-5 h-5 text-yellow-500 fill-current mr-1" />
-                    <span className="font-medium">{user.stats.rating}</span>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {reviews.map((review, index) => (
-                  <div key={index} className="border-b border-border last:border-0 pb-6 last:pb-0">
+            <div className="space-y-4">
+              {reviews.map((review, index) => (
+                <Card key={index}>
+                  <CardContent className="p-6">
                     <div className="flex items-start space-x-4">
                       <Avatar className="w-10 h-10">
-                        <AvatarFallback>{review.user.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                        <AvatarFallback>{review.user.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <h4 className="font-medium text-foreground">{review.user}</h4>
-                            <p className="text-sm text-muted-foreground">Learned {review.skill}</p>
-                          </div>
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h4 className="font-semibold text-foreground">{review.user}</h4>
                           <div className="flex items-center">
                             {[...Array(5)].map((_, i) => (
                               <Star 
@@ -319,14 +298,35 @@ const Profile = () => {
                             ))}
                           </div>
                         </div>
-                        <p className="text-muted-foreground mb-2">{review.comment}</p>
-                        <p className="text-sm text-muted-foreground">{review.date}</p>
+                        <p className="text-sm text-muted-foreground mb-2">{review.skill}</p>
+                        <p className="text-foreground mb-2">{review.comment}</p>
+                        <p className="text-xs text-muted-foreground">{review.date}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="badges" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {badges.map((badge, index) => (
+                <Card key={index}>
+                  <CardContent className="p-6">
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-accent/10`}>
+                        <badge.icon className={`w-6 h-6 ${badge.color}`} />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-foreground">{badge.name}</h4>
+                        <p className="text-sm text-muted-foreground">{badge.description}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </TabsContent>
         </Tabs>
       </div>
